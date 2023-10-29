@@ -4,11 +4,17 @@
 #define LED_COUNT 12
 // Brightness min/max 0/255
 #define BRIGHTNESS 50
+// Time in milliseconds between updates
+// About 50 is more responsive and 100 is more steady.
+#define INTERVAL_UPDATE 50
 
+#define MIC_PIN A0
+// About 10 keeps most background noise from lighting LEDs.
 #define NOISE_LEVEL 10
+#define INTERVAL_UPDATE_AGC 50
 
 // LED constructor
-// Argument 1 = Number of pixels in NeoPixel strip
+// Argument 1 = Number of pixels in NeoPixel leds
 // Argument 2 = Arduino pin number (most are valid)
 // Argument 3 = Pixel type flags, add together as needed:
 //   NEO_KHZ800  800 KHz bitstream (most NeoPixel products w/WS2812 LEDs)
@@ -16,27 +22,33 @@
 //   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
 //   NEO_RGBW    Pixels are wired for RGBW bitstream (NeoPixel RGBW products)
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ400);
+Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ400);
 
 // LED variables
 unsigned long last_change = 0;
+unsigned long last_change_agc = 0;
 unsigned long now = 0;
 
 // Microphon variables
-uint8_t mic = A0;
+uint8_t mic = MIC_PIN;
 uint8_t micOut;
-uint8_t average;
-uint8_t sound_level;
-uint8_t sound_level_max;
-uint8_t sound_level_max_average;
-uint8_t i;
+uint16_t average;
+uint16_t sound_level;
+uint16_t sound_level_max_interval;
+uint16_t sound_level_max;
+uint16_t sound_level_max_average;
+uint16_t sound_level_average;
+uint16_t i;
 
 void setup() {
   Serial.begin(9600);
 
-  strip.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
-  strip.show();            // Turn OFF all pixels ASAP
-  strip.setBrightness(BRIGHTNESS);
+  leds.begin();           // INITIALIZE NeoPixel leds object (REQUIRED)
+  leds.show();            // Turn OFF all pixels ASAP
+  leds.setBrightness(BRIGHTNESS);
+
+  last_change = millis();
+  last_change_agc = millis();
 }
 
 void loop() {
@@ -64,41 +76,69 @@ void loop() {
   {
     sound_level -= NOISE_LEVEL;
   }
+  
+  // // Automatic Gain Control
+  // if(now > last_change_agc)
+  // {
+  //   last_change_agc = now + INTERVAL_UPDATE_AGC;
+  //   sound_level_average = (sound_level_average + sound_level * 99) / 100;
+  //   Serial.print("snd lev avg:");
+  //   Serial.println(sound_level_average);
+  //   // If we go beyond the number of LEDs invoke AGC control
+  //   if (sound_level_average > LED_COUNT)
+  //   {
+  //     sound_level = sound_level * (LED_COUNT / (float)sound_level_average);
+  //   }
+  // }
 
-  // Track peak levels
-  if(sound_level_max < sound_level)
+  if(now > last_change)
   {
-    sound_level_max = sound_level;
-    if(sound_level_max >= LED_COUNT)
-    {
-      sound_level_max = LED_COUNT - 1;
-    }
-    sound_level_max_average = sound_level_max;
-  }
-  sound_level_max = (sound_level_max + sound_level_max_average * 9) / 10;
-  if(sound_level_max_average > 0)
-  {
-    sound_level_max_average--;
-  }
-  // Automatic Gain Control
+    last_change = now + INTERVAL_UPDATE;
 
-  for(i = 0; i < LED_COUNT; i++)
+    // Track peak levels
+    if(sound_level_max < sound_level_max_interval)
+    {
+      sound_level_max = sound_level_max_interval;
+      if(sound_level_max >= LED_COUNT)
+      {
+        sound_level_max = LED_COUNT - 1;
+      }
+      sound_level_max_average = sound_level_max;
+    }
+    sound_level_max = (sound_level_max + sound_level_max_average * 9) / 10;
+    if(sound_level_max_average > 0)
+    {
+      sound_level_max_average--;
+    }
+
+    // Light up the LEDs
+    for(i = 0; i < LED_COUNT; i++)
+    {
+      // Display sound level
+      if(i < sound_level_max_interval)
+      {
+        leds.setPixelColor(i, 255, 0, 0);
+      }
+      else
+      {
+        leds.setPixelColor(i, 0, 0, 0);
+      }
+      // Display peak sound level
+      if((i == sound_level_max) && (i > 0))
+      {
+        leds.setPixelColor(i, 0, 255, 0);
+      }
+    }
+    leds.show();
+    sound_level_max_interval = 0;
+  }
+  else
   {
-    // Display sound level
-    if(i < sound_level)
+    // Track the maxmimum until the next LED update.
+    if(sound_level_max_interval < sound_level)
     {
-      strip.setPixelColor(i, 255, 0, 0);
-    }
-    else
-    {
-      strip.setPixelColor(i, 0, 0, 0);
-    }
-    // Display peak sound level
-    if((i == sound_level_max) && (i > 0))
-    {
-      strip.setPixelColor(i, 0, 255, 0);
+      sound_level_max_interval = sound_level;
     }
   }
-  strip.show();
 }
 
