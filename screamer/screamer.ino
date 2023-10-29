@@ -28,6 +28,9 @@ Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ400);
 unsigned long last_change = 0;
 unsigned long last_change_agc = 0;
 unsigned long now = 0;
+unsigned long scream_start;
+unsigned long scream_length;
+uint8_t led_warm_up;
 
 // Microphon variables
 uint8_t mic = MIC_PIN;
@@ -39,6 +42,16 @@ uint16_t sound_level_max;
 uint16_t sound_level_max_average;
 uint16_t sound_level_average;
 uint16_t i;
+
+// State machine
+enum {
+  VU_METER_NORMAL,
+  VU_METER_GATER_POWER,
+  WARM_UP,
+  POWER_GATHERED,
+  POWER_DISCHARGED,
+};
+uint8_t state_machine = VU_METER_NORMAL;
 
 void setup() {
   Serial.begin(9600);
@@ -53,7 +66,60 @@ void setup() {
 
 void loop() {
   now = millis();
+  switch(state_machine)
+  {
+    case VU_METER_NORMAL:
+      if(vu_meter() > 4)
+      {
+        state_machine = VU_METER_GATER_POWER;
+      }
+      scream_start = now;
+      break;
 
+    case VU_METER_GATER_POWER:
+      if(vu_meter() == 0)
+      {
+        last_change = now;
+        led_warm_up = 0;
+        state_machine = WARM_UP;
+      }
+      else
+      {
+        // Count up power (length of sound)
+        scream_length = millis() - scream_start;
+      }
+      break;
+
+    case WARM_UP:
+      if(warm_up() > 0)
+      {
+        led_warm_up = 0;
+        state_machine = POWER_GATHERED;
+      }
+      break;
+
+    case POWER_GATHERED:
+      if(power_gathered() > 0)
+      {
+        state_machine = POWER_DISCHARGED;
+      }
+      break;
+
+    case POWER_DISCHARGED:
+      if(power_discharged() > 0)
+      {
+        state_machine = VU_METER_NORMAL;
+      }
+      break;
+  }
+  // Serial.print("state:");
+  // Serial.println(state_machine);
+
+}
+
+
+uint8_t vu_meter()
+{
   micOut = analogRead(mic);
 
   // Remove DC component by tracking slow average
@@ -117,7 +183,7 @@ void loop() {
       // Display sound level
       if(i < sound_level_max_interval)
       {
-        leds.setPixelColor(i, 255, 0, 0);
+        leds.setPixelColor(i, 100, 0, 0);
       }
       else
       {
@@ -126,7 +192,7 @@ void loop() {
       // Display peak sound level
       if((i == sound_level_max) && (i > 0))
       {
-        leds.setPixelColor(i, 0, 255, 0);
+        leds.setPixelColor(i, 0, 100, 0);
       }
     }
     leds.show();
@@ -140,5 +206,65 @@ void loop() {
       sound_level_max_interval = sound_level;
     }
   }
+  return sound_level_max;
 }
 
+uint8_t warm_up(void)
+{
+  uint8_t return_value = 0;
+  if(now > last_change)
+  {
+    last_change = now + 100;
+
+    led_warm_up++;
+    // Light up the LEDs
+    for(i = 0; i < LED_COUNT; i++)
+    {
+      leds.setPixelColor(i, led_warm_up, led_warm_up, 0);
+    }
+    leds.show();
+
+    if(led_warm_up > 25)
+    {
+      return_value = 1;
+    }
+    else
+    {
+      return_value = 0;
+    }
+  }
+  return return_value;
+}
+
+uint8_t power_gathered(void)
+{
+  if(now > last_change)
+  {
+    last_change = now + 500;
+
+    led_warm_up++;
+    // Light up the LEDs
+    for(i = 0; i < LED_COUNT; i++)
+    {
+      if(i < led_warm_up)
+      {
+        leds.setPixelColor(i, 255, 0, 0);
+      }
+    }
+    leds.show();
+
+    if(led_warm_up > LED_COUNT)
+    {
+      return 1;
+    }
+    else
+    {
+      return 0;
+    }
+  }
+}
+
+uint8_t power_discharged(void)
+{
+  return 1;
+}
