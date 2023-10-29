@@ -1,6 +1,6 @@
 #include <Adafruit_NeoPixel.h>
 
-#define LED_PIN 11
+#define LED_PIN 5
 #define LED_COUNT 12
 // Brightness min/max 0/255
 #define BRIGHTNESS 50
