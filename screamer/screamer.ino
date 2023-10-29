@@ -1,78 +1,104 @@
-#include <WS2812FX.h>
+#include <Adafruit_NeoPixel.h>
 
-#define LED_COUNT 13
 #define LED_PIN 11
+#define LED_COUNT 12
+// Brightness min/max 0/255
+#define BRIGHTNESS 50
 
-#define TIMER_MS 5000
+#define NOISE_LEVEL 10
 
-// Parameter 1 = number of pixels in strip
-// Parameter 2 = Arduino pin number (most are valid)
-// Parameter 3 = pixel type flags, add together as needed:
+// LED constructor
+// Argument 1 = Number of pixels in NeoPixel strip
+// Argument 2 = Arduino pin number (most are valid)
+// Argument 3 = Pixel type flags, add together as needed:
 //   NEO_KHZ800  800 KHz bitstream (most NeoPixel products w/WS2812 LEDs)
 //   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
 //   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
 //   NEO_RGBW    Pixels are wired for RGBW bitstream (NeoPixel RGBW products)
-WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_RGB + NEO_KHZ800);
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ400);
 
+// LED variables
 unsigned long last_change = 0;
 unsigned long now = 0;
 
-int mic = A0;
-int micOut;
-int average;
-int sound_level;
-
-int bandSize = 13;
-WS2812FX::Segment* seg = ws2812fx.getSegment();
+// Microphon variables
+uint8_t mic = A0;
+uint8_t micOut;
+uint8_t average;
+uint8_t sound_level;
+uint8_t sound_level_max;
+uint8_t sound_level_max_average;
 uint8_t i;
 
-
 void setup() {
-  ws2812fx.init();
-  ws2812fx.setBrightness(255);
-  ws2812fx.setSpeed(1000);
-  ws2812fx.setColor(0x007BFF);
-  ws2812fx.setMode(FX_MODE_STATIC);
-  ws2812fx.start();
-  
   Serial.begin(9600);
+
+  strip.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
+  strip.show();            // Turn OFF all pixels ASAP
+  strip.setBrightness(BRIGHTNESS);
 }
 
 void loop() {
   now = millis();
 
   micOut = analogRead(mic);
-  average = (float)micOut * (1/10.0f) + (float)average * (9/10.0f);
+
+  // Remove DC component by tracking slow average
+  average = (micOut + average * 9) / 10;
   sound_level = abs(micOut - average);
 
   // Serial.print("mic:");
   // Serial.println(micOut);
   // Serial.print("avg:");
   // Serial.println(average);
-  Serial.print("lev:");
-  Serial.println(sound_level);
+  // Serial.print("lev:");
+  // Serial.println(sound_level);
 
-  // if(now - last_change > TIMER_MS) {
-  //   ws2812fx.setMode((ws2812fx.getMode() + 1) % ws2812fx.getModeCount());
-  //   last_change = now;
-  // }
+  // Remove noise
+  if(sound_level < NOISE_LEVEL)
+  {
+    sound_level = 0;
+  }
+  else
+  {
+    sound_level -= NOISE_LEVEL;
+  }
 
+  // Track peak levels
+  if(sound_level_max < sound_level)
+  {
+    sound_level_max = sound_level;
+    if(sound_level_max >= LED_COUNT)
+    {
+      sound_level_max = LED_COUNT - 1;
+    }
+    sound_level_max_average = sound_level_max;
+  }
+  sound_level_max = (sound_level_max + sound_level_max_average * 9) / 10;
+  if(sound_level_max_average > 0)
+  {
+    sound_level_max_average--;
+  }
+  // Automatic Gain Control
 
-  uint8_t scaledBand = (sound_level * bandSize) / 128;
-  Serial.print("scl:");
-  Serial.println(scaledBand);
-  for(uint16_t j=0; j<bandSize; j++) {
-    uint16_t index = seg->start + (i * bandSize) + j;
-    if(j <= scaledBand) {
-      if(j < bandSize - 4) ws2812fx.setPixelColor(index, seg->colors[0]);
-      else if(j < bandSize - 2) ws2812fx.setPixelColor(index, seg->colors[1]);
-      else ws2812fx.setPixelColor(index, seg->colors[2]);
-    } else {
-      ws2812fx.setPixelColor(index, BLACK);
+  for(i = 0; i < LED_COUNT; i++)
+  {
+    // Display sound level
+    if(i < sound_level)
+    {
+      strip.setPixelColor(i, 255, 0, 0);
+    }
+    else
+    {
+      strip.setPixelColor(i, 0, 0, 0);
+    }
+    // Display peak sound level
+    if((i == sound_level_max) && (i > 0))
+    {
+      strip.setPixelColor(i, 0, 255, 0);
     }
   }
-  // ws2812fx.setCycle();
-  ws2812fx.service();
-
+  strip.show();
 }
+
