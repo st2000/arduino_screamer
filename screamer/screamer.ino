@@ -1,7 +1,7 @@
 #include <Adafruit_NeoPixel.h>
 
 #define LED_PIN 5
-#define LED_COUNT 12
+#define LED_COUNT 14
 // Brightness min/max 0/255
 #define BRIGHTNESS 50
 // Time in milliseconds between updates
@@ -71,7 +71,7 @@ void loop() {
     case VU_METER_NORMAL:
       if(vu_meter() > 4)
       {
-        state_machine = VU_METER_GATER_POWER;
+        // state_machine = VU_METER_GATER_POWER;
       }
       scream_start = now;
       break;
