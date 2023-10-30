@@ -3,7 +3,7 @@
 #define LED_PIN 5
 #define LED_COUNT 14
 // Brightness min/max 0/255
-#define BRIGHTNESS 50
+#define BRIGHTNESS 100
 // Time in milliseconds between updates
 // About 50 is more responsive and 100 is more steady.
 #define INTERVAL_UPDATE 50
@@ -71,7 +71,7 @@ void loop() {
     case VU_METER_NORMAL:
       if(vu_meter() > 4)
       {
-        // state_machine = VU_METER_GATER_POWER;
+        state_machine = VU_METER_GATER_POWER;
       }
       scream_start = now;
       break;
@@ -101,6 +101,7 @@ void loop() {
     case POWER_GATHERED:
       if(power_gathered() > 0)
       {
+        led_warm_up = 0;
         state_machine = POWER_DISCHARGED;
       }
       break;
@@ -112,12 +113,12 @@ void loop() {
       }
       break;
   }
-  // Serial.print("state:");
-  // Serial.println(state_machine);
+  Serial.print("state:");
+  Serial.println(state_machine);
 
 }
 
-
+// VU Meter effect
 uint8_t vu_meter()
 {
   micOut = analogRead(mic);
@@ -209,22 +210,26 @@ uint8_t vu_meter()
   return sound_level_max;
 }
 
+// Warmup effect
 uint8_t warm_up(void)
 {
   uint8_t return_value = 0;
   if(now > last_change)
   {
-    last_change = now + 100;
+    last_change = now + 25;
 
     led_warm_up++;
     // Light up the LEDs
     for(i = 0; i < LED_COUNT; i++)
     {
-      leds.setPixelColor(i, led_warm_up, led_warm_up, 0);
+      leds.setPixelColor(i, led_warm_up, led_warm_up * 0.8f, 0);
     }
     leds.show();
 
-    if(led_warm_up > 25)
+    // Serial.print("glow:");
+    // Serial.println(led_warm_up);
+
+    if(led_warm_up > 10)
     {
       return_value = 1;
     }
@@ -236,11 +241,13 @@ uint8_t warm_up(void)
   return return_value;
 }
 
+// Display the gathered power effect
 uint8_t power_gathered(void)
 {
+  uint8_t return_value = 0;
   if(now > last_change)
   {
-    last_change = now + 500;
+    last_change = now + 150;
 
     led_warm_up++;
     // Light up the LEDs
@@ -248,23 +255,53 @@ uint8_t power_gathered(void)
     {
       if(i < led_warm_up)
       {
-        leds.setPixelColor(i, 255, 0, 0);
+        if((scream_length / 100) > i)
+        {
+          leds.setPixelColor(i, 255, 0, 0);
+        }
       }
     }
     leds.show();
 
     if(led_warm_up > LED_COUNT)
     {
-      return 1;
+      return_value = 1;
     }
     else
     {
-      return 0;
+      return_value = 0;
     }
   }
+  return return_value;
 }
 
 uint8_t power_discharged(void)
 {
-  return 1;
+  uint8_t return_value = 0;
+  if(now > last_change)
+  {
+    last_change = now + 25;
+
+    led_warm_up++;
+    // Light off all the LEDs
+    leds.setBrightness(100 - led_warm_up);
+    leds.show();
+
+    if(led_warm_up >= 100)
+    {
+      // Light off all the LEDs
+      for(i = 0; i < LED_COUNT; i++)
+      {
+        leds.setPixelColor(i, 0, 0, 0);
+      }
+      leds.setBrightness(BRIGHTNESS);
+      leds.show();
+      return_value = 1;
+    }
+    else
+    {
+      return_value = 0;
+    }
+  }
+  return return_value;
 }
